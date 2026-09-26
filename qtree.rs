@@ -8,7 +8,7 @@ pub struct QuadTree<T> {
 }
 
 impl<T: Copy> QuadTree<T> {
-     pub fn new(max: u32) -> Self {
+     pub fn new(max: u32, state: bool) -> Self {
           let max2 = max * max;
           let mut usage_hash = HashSet::with_capacity(max2 as usize);
 
@@ -18,8 +18,7 @@ impl<T: Copy> QuadTree<T> {
           };
 
           let mut n = 0;
-
-          let node = Node::new(&[0, 0], &[max, max], &mut usage_hash, &mut n, nodes);
+          let node = Node::new(&[0, 0], &[max, max], &mut usage_hash, &mut n, nodes, &state);
 
           Self {
                len: 0,
@@ -33,8 +32,7 @@ impl<T: Copy> QuadTree<T> {
                     return None;
                }
 
-               let mut n = 0;
-               (*self.node).get(value, &mut n)
+                (*self.node).get(value)
           }
      }
 
@@ -44,8 +42,7 @@ impl<T: Copy> QuadTree<T> {
                     return None;
                }
 
-               let mut n = 0;
-               (*self.node).get_cmp(value, &mut n)
+               (*self.node).get_cmp(value)
           }
      }
 
@@ -55,8 +52,7 @@ impl<T: Copy> QuadTree<T> {
                     return;
                }
 
-               let mut n = 0;
-               let found = (*self.node).remove(value, &mut n);
+               let found = (*self.node).remove(value);
 
                if found {
                     self.len -= 1;
@@ -70,8 +66,7 @@ impl<T: Copy> QuadTree<T> {
                     return;
                }
 
-               let mut n = 0;
-               let found = (*self.node).remove_cmp(value, &mut n);
+               let found = (*self.node).remove_cmp(value);
 
                if found {
                     self.len -= 1;
@@ -85,8 +80,7 @@ impl<T: Copy> QuadTree<T> {
                     return;
                }
 
-               let mut n = 0;
-               let found = (*self.node).insert(key, value, &mut n);
+               let found = (*self.node).insert(key, value);
 
                if found {
                     self.len += 1;
@@ -94,19 +88,17 @@ impl<T: Copy> QuadTree<T> {
           }
      }
 
-     pub fn insert_cmp(&mut self, key: &[u32; 2], value: T) -> u32 {
+     pub fn insert_cmp(&mut self, key: &[u32; 2], value: T) {
           unsafe {
                if self.node == null_mut() {
-                    return 0;
+                    return;
                }
 
-               let mut n = 0;
-               let found = (*self.node).insert_cmp(key, value, &mut n);
+               let found = (*self.node).insert_cmp(key, value);
 
                if found {
                     self.len += 1;
                }
-               n
           }
      }
 
@@ -129,7 +121,7 @@ struct Node<T> {
 }
 
 impl<T: Copy> Node<T> {
-     pub fn new(min: &[u32; 2], max: &[u32; 2], usage_hash: &mut HashSet<[u32; 2]>, n: &mut u32, nodes: *mut Node<T>) -> *mut Self {
+     pub fn new(min: &[u32; 2], max: &[u32; 2], usage_hash: &mut HashSet<[u32; 2]>, n: &mut u32, nodes: *mut Node<T>, state: &bool) -> *mut Self {
           let middle = [
                min[0] + (max[0] - min[0]) / 2,
                min[1] + (max[1] - min[1]) / 2
@@ -145,8 +137,8 @@ impl<T: Copy> Node<T> {
                *n += 1;
 
                node.write(Self {
-                    used: false,
-                    full: false,
+                    used: *state,
+                    full: *state,
 
                     key: middle,
                     value: None,
@@ -158,19 +150,19 @@ impl<T: Copy> Node<T> {
                });
 
                if middle[0] < max[0] && middle[1] < max[1] {
-                    (*node).x1y1 = Node::new(&middle, max, usage_hash, n, nodes);
+                    (*node).x1y1 = Node::new(&middle, max, usage_hash, n, nodes, state);
                }
 
                if middle[0] < max[0] && middle[1] > min[1] {
-                    (*node).x1y0 = Node::new(&[middle[0], min[1]], &[max[0], middle[1]], usage_hash, n, nodes);
+                    (*node).x1y0 = Node::new(&[middle[0], min[1]], &[max[0], middle[1]], usage_hash, n, nodes, state);
                }
 
                if middle[0] > min[0] && middle[1] < max[1] {
-                    (*node).x0y1 = Node::new(&[min[0], middle[1]], &[middle[0], max[1]], usage_hash, n, nodes);
+                    (*node).x0y1 = Node::new(&[min[0], middle[1]], &[middle[0], max[1]], usage_hash, n, nodes, state);
                }
 
                if middle[0] > min[0] && middle[1] > min[1] {
-                    (*node).x0y0 = Node::new(&[min[0], min[1]], &[middle[0], middle[1]], usage_hash, n, nodes);
+                    (*node).x0y0 = Node::new(&[min[0], min[1]], &[middle[0], middle[1]], usage_hash, n, nodes, state);
                }
 
                node
@@ -192,9 +184,7 @@ impl<T: Copy> Node<T> {
           }
      }
 
-     fn find<F>(&mut self, key: &[u32; 2], n: &mut u32, f: &mut F) -> bool where F: FnMut(&mut Node<T>) {
-          *n += 1;
-
+     fn find<F>(&mut self, key: &[u32; 2], f: &mut F) -> bool where F: FnMut(&mut Node<T>) {
           if *key == self.key {
                f(self);
                self.magic();
@@ -207,7 +197,7 @@ impl<T: Copy> Node<T> {
                    && key[0] >= self.key[0]
                    && key[1] >= self.key[1] {
 
-                    let found = (*self.x1y1).find(key, n, f);
+                    let found = (*self.x1y1).find(key, f);
                     if found {
                          self.magic();
 
@@ -219,7 +209,7 @@ impl<T: Copy> Node<T> {
                    && key[0] >= self.key[0]
                    && key[1] < self.key[1] {
 
-                    let found = (*self.x1y0).find(key, n, f);
+                    let found = (*self.x1y0).find(key, f);
                     if found {
                          self.magic();
 
@@ -231,7 +221,7 @@ impl<T: Copy> Node<T> {
                    && key[0] < self.key[0]
                    && key[1] >= self.key[1] {
 
-                    let found = (*self.x0y1).find(key, n, f);
+                    let found = (*self.x0y1).find(key, f);
                     if found {
                          self.magic();
 
@@ -243,7 +233,7 @@ impl<T: Copy> Node<T> {
                    && key[0] < self.key[0]
                    && key[1] < self.key[1] {
 
-                    let found = (*self.x0y0).find(key, n, f);
+                    let found = (*self.x0y0).find(key, f);
                     if found {
                          self.magic();
 
@@ -255,9 +245,9 @@ impl<T: Copy> Node<T> {
           }
      }
 
-     pub fn get(&mut self, value: &[u32; 2], n: &mut u32) -> Option<&mut T> {
+     pub fn get(&mut self, value: &[u32; 2]) -> Option<&mut T> {
           let mut t = null_mut();
-          self.find(value, n, &mut |node| {
+          self.find(value, &mut |node| {
                t = &mut (*node).value as *mut Option<T>;
           });
 
@@ -270,24 +260,22 @@ impl<T: Copy> Node<T> {
           }
      }
 
-     pub fn remove(&mut self, value: &[u32; 2], n: &mut u32) -> bool {
-          self.find(value, n, &mut |node| {
+     pub fn remove(&mut self, value: &[u32; 2]) -> bool {
+          self.find(value, &mut |node| {
                node.value = None;
                node.used = false;
           })
      }
 
-     pub fn insert(&mut self, key: &[u32; 2], value: T, n: &mut u32) -> bool {
-          self.find(key, n, &mut |node| {
+     pub fn insert(&mut self, key: &[u32; 2], value: T) -> bool {
+          self.find(key, &mut |node| {
                node.value = Some(value);
                node.used = true;
           })
      }
 
 
-     pub fn find_cmp<F>(&mut self, key: &[u32; 2], n: &mut u32, f: &mut F) -> bool where F: FnMut(&mut Node<T>) {
-          *n += 1;
-
+     pub fn find_cmp<F>(&mut self, key: &[u32; 2], f: &mut F) -> bool where F: FnMut(&mut Node<T>) {
           if key[0] <= self.key[0]
               && key[1] <= self.key[1]
               && !self.used {
@@ -302,7 +290,7 @@ impl<T: Copy> Node<T> {
                if self.x1y1 != null_mut()
                    && !(*self.x1y1).full {
 
-                    let found = (*self.x1y1).find_cmp(key, n, f);
+                    let found = (*self.x1y1).find_cmp(key, f);
                     if found {
                          self.magic();
 
@@ -314,7 +302,7 @@ impl<T: Copy> Node<T> {
                    && key[1] < self.key[1]
                    && !(*self.x1y0).full {
 
-                    let found = (*self.x1y0).find_cmp(key, n, f);
+                    let found = (*self.x1y0).find_cmp(key, f);
                     if found {
                          self.magic();
 
@@ -326,7 +314,7 @@ impl<T: Copy> Node<T> {
                    && key[0] < self.key[0]
                    && !(*self.x0y1).full {
 
-                    let found = (*self.x0y1).find_cmp(key, n, f);
+                    let found = (*self.x0y1).find_cmp(key, f);
                     if found {
                          self.magic();
 
@@ -339,7 +327,7 @@ impl<T: Copy> Node<T> {
                    && key[1] < self.key[1]
                    && !(*self.x0y0).full {
 
-                    let found = (*self.x0y0).find_cmp(key, n, f);
+                    let found = (*self.x0y0).find_cmp(key, f);
                     if found {
                          self.magic();
 
@@ -351,9 +339,9 @@ impl<T: Copy> Node<T> {
           }
      }
 
-     pub fn get_cmp(&mut self, key: &[u32; 2], n: &mut u32) -> Option<&mut T> {
+     pub fn get_cmp(&mut self, key: &[u32; 2]) -> Option<&mut T> {
           let mut t = null_mut();
-          self.find_cmp(key, n, &mut |node| {
+          self.find_cmp(key, &mut |node| {
                t = &mut (*node).value as *mut Option<T>;
           });
 
@@ -366,15 +354,15 @@ impl<T: Copy> Node<T> {
           }
      }
 
-     pub fn remove_cmp(&mut self, key: &[u32; 2], n: &mut u32) -> bool {
-          self.find_cmp(key, n, &mut |node| {
+     pub fn remove_cmp(&mut self, key: &[u32; 2]) -> bool {
+          self.find_cmp(key, &mut |node| {
                node.value = None;
                node.used = false;
           })
      }
 
-     pub fn insert_cmp(&mut self, key: &[u32; 2], value: T, n: &mut u32) -> bool {
-          self.find(key, n, &mut |node| {
+     pub fn insert_cmp(&mut self, key: &[u32; 2], value: T) -> bool {
+          self.find(key, &mut |node| {
                node.value = Some(value);
                node.used = true;
           })
