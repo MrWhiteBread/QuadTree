@@ -36,10 +36,10 @@ impl<T: Copy> QuadTree<T> {
         }
     }
 
-    pub fn get_cmp(&mut self, value: &[u32; 2]) -> Option<&mut T> {
+    pub fn get_cmp(&mut self, value: &[u32; 2]) -> (Option<&mut T>, [u32; 2]) {
         unsafe {
             if self.node == null_mut() {
-                return None;
+                return (None, [0, 0]);
             }
 
             (*self.node).get_cmp(value)
@@ -60,17 +60,19 @@ impl<T: Copy> QuadTree<T> {
         }
     }
 
-    pub fn remove_cmp(&mut self, value: &[u32; 2]) {
+    pub fn remove_cmp(&mut self, value: &[u32; 2]) -> [u32; 2] {
         unsafe {
             if self.node == null_mut() {
-                return;
+                return [0; 2];
             }
 
-            let found = (*self.node).remove_cmp(value);
+            let (found, key) = (*self.node).remove_cmp(value);
 
             if found {
                 self.len -= 1;
             }
+
+            key
         }
     }
 
@@ -88,17 +90,19 @@ impl<T: Copy> QuadTree<T> {
         }
     }
 
-    pub fn insert_cmp(&mut self, key: &[u32; 2], value: T) {
+    pub fn insert_cmp(&mut self, key: &[u32; 2], value: T) -> [u32; 2] {
         unsafe {
             if self.node == null_mut() {
-                return;
+                return [0; 2];
             }
 
-            let found = (*self.node).insert_cmp(key, value);
+            let (found, key) = (*self.node).insert_cmp(key, value);
 
             if found {
                 self.len += 1;
             }
+
+            key
         }
     }
 
@@ -342,7 +346,7 @@ impl<T: Copy> Node<T> {
     pub fn get_cmp(&mut self, key: &[u32; 2]) -> (Option<&mut T>, [u32; 2]) {
         let mut t = null_mut();
         let temp_key = [0; 2];
-        
+
         self.find_cmp(key, &mut |node| {
             t = &mut (*node).value as *mut Option<T>;
         });
@@ -361,20 +365,20 @@ impl<T: Copy> Node<T> {
 
         let found = self.find_cmp(key, &mut |node| {
             temp_key = node.key;
-            
+
             node.value = None;
             node.used = false;
         });
-            
+
         (found, temp_key)
     }
 
     pub fn insert_cmp(&mut self, key: &[u32; 2], value: T) -> (bool, [u32; 2]) {
         let mut temp_key = [0; 2];
-        
+
         let found = self.find(key, &mut |node| {
             temp_key = node.key;
-            
+
             node.value = Some(value);
             node.used = true;
         });
